@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+<log4j:configuration debug="true">
+
+    <!-- Console Appender -->
+    <appender name="stdout" class="org.apache.log4j.ConsoleAppender">
+        <layout class="org.apache.log4j.PatternLayout">
+            <!-- ISO 8601 with time zone -->
+            <param name="ConversionPattern" value="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5p (%-18C{1}:%-4L) - %m%n"/>
+        </layout>
+    </appender>
+
+    <!-- Overwriting Log Level for Specified Packages -->
+    <category name="your.pckg">
+        <priority value="DEBUG"/>
+    </category>
+
+    <root>
+        <level value="INFO"/>
+        <appender-ref ref="stdout"/>
+    </root>
+
+</log4j:configuration>

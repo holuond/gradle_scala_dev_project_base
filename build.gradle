@@ -1,0 +1,125 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+}
+
+plugins {
+    id 'scala'
+    id 'distribution'
+    id 'maven-publish'
+    id 'jacoco' // code coverage
+    id "com.palantir.docker" version "0.25.0" // docker build + push
+    id "com.adarshr.test-logger" version "2.1.1" // beautify test logs
+    id "com.github.johnrengelman.shadow" version "6.1.0" // fatJAR
+}
+
+group = 'your.pckg'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '1.8'
+
+def scalaToolsVersion = '2.13'
+def scalaVersion = '2.13.3'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation "org.slf4j:slf4j-log4j12:1.7.25"
+    implementation "org.scala-lang:scala-library:$scalaVersion"
+    implementation "com.github.scopt:scopt_$scalaToolsVersion:3.7.1"
+    implementation 'com.typesafe:config:1.4.0'
+    implementation "com.github.pureconfig:pureconfig_$scalaToolsVersion:0.14.0"
+    implementation 'commons-io:commons-io:2.4'
+
+    testImplementation "org.scalatest:scalatest_$scalaToolsVersion:3.2.0"
+    testImplementation 'junit:junit:4.13'
+    testImplementation "org.scalatestplus:junit-4-13_$scalaToolsVersion:3.2.2.0"
+}
+
+def findEnv(String defaultEnv) {
+    findProperty('env') ?: defaultEnv
+}
+
+def findEnv() {
+    findEnv('DEV')
+}
+
+build.dependsOn(shadowJar)
+distTar.dependsOn(shadowJar)
+
+jar {
+    manifest {
+        attributes(
+                'git-commit-hash': getCommitHash(),
+                'Main-Class': 'your.pckg.Main'
+        )
+    }
+}
+
+shadowJar {
+}
+
+distributions {
+    main {
+        contents {
+            into('lib') {
+                from shadowJar.outputs.files.singleFile
+            }
+            into('conf') {
+                from "src/main/resources/${findEnv()}"
+                include "application.conf"
+                include "log4j.xml"
+            }
+            into('bin') {
+                from 'src/main/bash'
+                include '*.sh'
+            }
+        }
+    }
+}
+
+docker {
+    def dependenciesDir = 'image-dependencies'
+    def dist = tasks.distTar.outputs.files.singleFile
+    def commonBuildArgs = [DEPENDENCIES_DIR: "$dependenciesDir",
+                           APP_JAR         : "${shadowJar.outputs.files.singleFile.name}",
+                           APP_DIST_ARCHIVE: "$dist.name",
+                           APP_ROOT_DIR    : '/opt/your.pckg']
+
+    def envSpecificBuildArgs
+    switch (findEnv()) {
+        // you can fill this with your env-dynamic configuration parameters
+        case "PROD":
+            envSpecificBuildArgs = []
+            break
+        default:
+            envSpecificBuildArgs = []
+            break
+    }
+
+    name "your.repo/${distTar.archiveBaseName}-${findEnv()}:${project.version}"
+    files dist
+    copySpec.into(dependenciesDir)
+    buildArgs(commonBuildArgs + envSpecificBuildArgs)
+
+    noCache true
+}
+
+testlogger {
+    // use colors and Unicode symbols in tests
+    theme 'mocha'
+}
+
+def getCommitHash() {
+    if (findProperty('GIT_COMMIT')) {
+        // from integration/CICD tool
+        return findProperty('GIT_COMMIT')
+    } else {
+        // find out locally
+        def hash = 'git rev-parse HEAD'.execute()
+        hash.waitFor()
+        return hash.text.trim()
+    }
+}
